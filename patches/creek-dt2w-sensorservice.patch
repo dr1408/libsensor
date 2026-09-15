@@ -1,30 +1,44 @@
-diff --git a/services/sensorservice/SensorService.cpp b/services/sensorservice/SensorService.cpp
-index c28ef15..6a5e012 100644
 --- a/services/sensorservice/SensorService.cpp
 +++ b/services/sensorservice/SensorService.cpp
-@@ -2048,6 +2048,30 @@ status_t SensorService::enable(const sp<SensorEventConnection>& connection,
+@@ -2048,6 +2048,41 @@
          return BAD_VALUE;
      }
-
-+    // Creek: prevent SystemUI ThresholdSensorImpl from using virtual proximity.
+ 
++    // Creek: mirror HyperOS' virtual-proximity client filtering.
++    // SensorEventConnection::getPackageName() is the application package,
++    // normally com.android.systemui, not the Java ThresholdSensorImpl class.
 +    char device[PROPERTY_VALUE_MAX] = {};
 +    property_get("ro.product.vendor.device", device, "");
++    if (device[0] == '\0') {
++        property_get("ro.product.device", device, "");
++    }
 +    const String8 sensorName = sensor->getSensor().getName();
 +    const String8 clientName = connection->getPackageName();
-+    constexpr char kThresholdSensorClient[] =
-+            "com.android.systemui.util.sensors.ThresholdSensorImpl";
 +    const bool isVirtualProximity =
 +            sensor->getSensor().getType() == SENSOR_TYPE_PROXIMITY &&
 +            (sensorName == "Virtual Proximity Sensor" ||
-+             sensorName.contains("virtual ps Proximity Sensor"));
-+    if (!strcmp(device, "creek") && isVirtualProximity &&
-+        !strncmp(clientName.c_str(), kThresholdSensorClient,
-+                 sizeof(kThresholdSensorClient) - 1)) {
-+        ALOGW("Blocking %s from virtual proximity sensor %s on creek",
-+              clientName.c_str(), sensorName.c_str());
++             sensorName == "virtual ps Proximity Sensor");
++    if (isVirtualProximity) {
++        ALOGI("Creek virtual-proximity request: device=%s sensor=%s type=%d "
++              "handle=%d package=%s opPackage=%s",
++              device, sensorName.c_str(), sensor->getSensor().getType(),
++              handle, clientName.c_str(), String8(opPackageName).c_str());
++    }
++
++    // Set persist.vendor.creek.block_virtual_psensor=0 to log without blocking.
++    char blockVirtualPsensor[PROPERTY_VALUE_MAX] = {};
++    property_get("persist.vendor.creek.block_virtual_psensor",
++                 blockVirtualPsensor, "1");
++    const bool shouldBlock = strcmp(blockVirtualPsensor, "0") != 0;
++    if (!strcmp(device, "creek") && isVirtualProximity && shouldBlock &&
++        clientName == "com.android.systemui") {
++        ALOGW("Creek DT2W: denying virtual proximity to package=%s "
++              "opPackage=%s sensor=%s",
++              clientName.c_str(), String8(opPackageName).c_str(),
++              sensorName.c_str());
 +        return PERMISSION_DENIED;
 +    }
-
++
      ConnectionSafeAutolock connLock = mConnectionHolder.lock(mLock);
      if (mCurrentOperatingMode != NORMAL &&
          !isInjectionMode(mCurrentOperatingMode) &&
