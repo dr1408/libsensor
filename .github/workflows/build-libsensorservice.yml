@@ -7,7 +7,7 @@ jobs:
   build:
     # A self-hosted runner is recommended: Android source and output need
     # considerably more storage than a standard GitHub-hosted runner.
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout patch repository
