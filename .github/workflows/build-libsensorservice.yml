@@ -1,0 +1,65 @@
+name: Build patched libsensorservice
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # A self-hosted runner is recommended: Android source and output need
+    # considerably more storage than a standard GitHub-hosted runner.
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout patch repository
+        uses: actions/checkout@v4
+
+      - name: Install repo tool
+        shell: bash
+        run: |
+          mkdir -p "$HOME/bin"
+          curl -L https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
+          echo "$HOME/bin" >> "$GITHUB_PATH"
+
+      - name: Initialize LineageOS source
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/lineage"
+          cd "$RUNNER_TEMP/lineage"
+          repo init -u https://github.com/LineageOS/android.git -b lineage-23.2 --git-lfs
+          mkdir -p .repo/local_manifests
+          curl -L https://raw.githubusercontent.com/XiaomiCreek/LineageOS/lineage-23.2/local_manifest.xml \
+            -o .repo/local_manifests/creek.xml
+
+      - name: Sync source
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/lineage"
+          repo sync -c --no-clone-bundle --no-tags -j4
+
+      - name: Apply patch
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/lineage/frameworks/native"
+          git apply "$GITHUB_WORKSPACE/patches/creek-dt2w-sensorservice.patch"
+
+      - name: Build only libsensorservice
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/lineage"
+          source build/envsetup.sh
+          lunch lineage_creek-userdebug
+          m libsensorservice -j"$(nproc)"
+
+      - name: Collect output
+        shell: bash
+        run: |
+          cd "$RUNNER_TEMP/lineage"
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          find out -name libsensorservice.so -type f -exec cp -v {} "$GITHUB_WORKSPACE/artifacts/" \;
+
+      - name: Upload library
+        uses: actions/upload-artifact@v4
+        with:
+          name: creek-patched-libsensorservice
+          path: artifacts/

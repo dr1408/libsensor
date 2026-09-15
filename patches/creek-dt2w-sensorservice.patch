@@ -1,0 +1,30 @@
+diff --git a/services/sensorservice/SensorService.cpp b/services/sensorservice/SensorService.cpp
+index c28ef15..6a5e012 100644
+--- a/services/sensorservice/SensorService.cpp
++++ b/services/sensorservice/SensorService.cpp
+@@ -2048,6 +2048,30 @@ status_t SensorService::enable(const sp<SensorEventConnection>& connection,
+         return BAD_VALUE;
+     }
+
++    // Creek: prevent SystemUI ThresholdSensorImpl from using virtual proximity.
++    char device[PROPERTY_VALUE_MAX] = {};
++    property_get("ro.product.vendor.device", device, "");
++    const String8 sensorName = sensor->getSensor().getName();
++    const String8 clientName = connection->getPackageName();
++    constexpr char kThresholdSensorClient[] =
++            "com.android.systemui.util.sensors.ThresholdSensorImpl";
++    const bool isVirtualProximity =
++            sensor->getSensor().getType() == SENSOR_TYPE_PROXIMITY &&
++            (sensorName == "Virtual Proximity Sensor" ||
++             sensorName.contains("virtual ps Proximity Sensor"));
++    if (!strcmp(device, "creek") && isVirtualProximity &&
++        !strncmp(clientName.c_str(), kThresholdSensorClient,
++                 sizeof(kThresholdSensorClient) - 1)) {
++        ALOGW("Blocking %s from virtual proximity sensor %s on creek",
++              clientName.c_str(), sensorName.c_str());
++        return PERMISSION_DENIED;
++    }
+
+     ConnectionSafeAutolock connLock = mConnectionHolder.lock(mLock);
+     if (mCurrentOperatingMode != NORMAL &&
+         !isInjectionMode(mCurrentOperatingMode) &&
